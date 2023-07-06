@@ -4,7 +4,6 @@
 import os
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 import numpy as np
-import os
 import cv2
 import time
 from random import randint
@@ -47,6 +46,7 @@ from skimage import (exposure, feature, filters, io, measure,
 from matplotlib.widgets import Slider
 
 
+
 # Helper Function
 def flatten_3d_to_2d(array_3d):
     # Get the dimensions of the 3D array
@@ -84,8 +84,8 @@ def read_dicom_files(directory):
                 print(f"Skipping file: {filename}. It is not a valid DICOM file.")
     return dicom_files
 # Helper Function
-def get_ram_usage(variable):
-    size_in_bytes = sys.getsizeof(variable, variable_name)
+def get_ram_usage(variable, variable_name):
+    size_in_bytes = sys.getsizeof(variable)
     size_in_kb = size_in_bytes / 1024
     size_in_mb = size_in_kb / 1024
     size_in_gb = size_in_mb / 1024
@@ -195,7 +195,7 @@ def VoxelisationMask(filename_label, slice_aoi_range):
 
     voxel_grid = np.where(voxel_grid > 0, 1, 0)
 
-    print('Mask Slices Normalized to MRI Scans Shape (Purely AOI)', voxel_grid.shape)
+    print('Mask Slices Normalized to MRI Scans Shape (Purely AOI): ', voxel_grid.shape)
 
     return voxel_grid
 
@@ -209,6 +209,7 @@ filename_labels = ['R_tibia_15A']
 train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
 
 for filename_label in filename_labels:
+    print('\n')
     print(('{}'.format(filename_label)))
 
     training_scan, coord_data = TrainingMRIScans(scans_path)
@@ -242,16 +243,16 @@ training_scans = np.array(training_scans)
 # Determines image dataset size for UNet model
 # training_scans_reshape = train_mask_tibia_labels.reshape((1, 10, 512, 512))
 # train_mask_tibia_labels_reshape = training_scans.reshape((1, 10, 512, 512))
-training_scans_reshape = training_scans[:10]
-train_mask_tibia_labels_reshape = train_mask_tibia_labels[:10]
+training_scans = training_scans[:, :10, :, :]
+train_mask_tibia_labels = train_mask_tibia_labels[:, :1, :, :]
 
 # Free up memory occupied by the original arrays
-del training_scans
-del train_mask_tibia_labels
-training_scans = training_scans_reshape
-train_mask_tibia_labels = train_mask_tibia_labels_reshape
-del training_scans_reshape
-del train_mask_tibia_labels_reshape
+# del training_scans
+# del train_mask_tibia_labels
+# training_scans = training_scans_reshape
+# train_mask_tibia_labels = train_mask_tibia_labels_reshape
+# del training_scans_reshape
+# del train_mask_tibia_labels_reshape
 
 
 print('Number of Paitents: ', (training_scans.shape)[0])
@@ -261,3 +262,116 @@ get_ram_usage(training_scans, 'training_scans')
 get_ram_usage(train_mask_tibia_labels, 'train_mask_tibia_labels')
 
 
+
+# Define U-Net model
+def unet_model(input_shape):
+    inputs = Input(input_shape)
+    
+    # Encoder
+    conv1 = Conv2D(64, 3, activation='relu', padding='same')(inputs)
+    conv1 = Conv2D(64, 3, activation='relu', padding='same')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+    
+    conv2 = Conv2D(128, 3, activation='relu', padding='same')(pool1)
+    conv2 = Conv2D(128, 3, activation='relu', padding='same')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+    
+    conv3 = Conv2D(256, 3, activation='relu', padding='same')(pool2)
+    conv3 = Conv2D(256, 3, activation='relu', padding='same')(conv3)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
+    
+    conv4 = Conv2D(512, 3, activation='relu', padding='same')(pool3)
+    conv4 = Conv2D(512, 3, activation='relu', padding='same')(conv4)
+    drop4 = Dropout(0.5)(conv4)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(drop4)
+    
+    # Bottleneck
+    conv5 = Conv2D(1024, 3, activation='relu', padding='same')(pool4)
+    conv5 = Conv2D(1024, 3, activation='relu', padding='same')(conv5)
+    drop5 = Dropout(0.5)(conv5)
+    
+    # Decoder
+    up6 = Conv2D(512, 2, activation='relu', padding='same')(UpSampling2D(size=(2, 2))(drop5))
+    merge6 = concatenate([drop4, up6], axis=3)
+    conv6 = Conv2D(512, 3, activation='relu', padding='same')(merge6)
+    conv6 = Conv2D(512, 3, activation='relu', padding='same')(conv6)
+    
+    up7 = Conv2D(256, 2, activation='relu', padding='same')(UpSampling2D(size=(2, 2))(conv6))
+    merge7 = concatenate([conv3, up7], axis=3)
+    conv7 = Conv2D(256, 3, activation='relu', padding='same')(merge7)
+    conv7 = Conv2D(256, 3, activation='relu', padding='same')(conv7)
+    
+    up8 = Conv2D(128, 2, activation='relu', padding='same')(UpSampling2D(size=(2, 2))(conv7))
+    merge8 = concatenate([conv2, up8], axis=3)
+    conv8 = Conv2D(128, 3, activation='relu', padding='same')(merge8)
+    conv8 = Conv2D(128, 3, activation='relu', padding='same')(conv8)
+    
+    up9 = Conv2D(64, 2, activation='relu', padding='same')(UpSampling2D(size=(2, 2))(conv8))
+    merge9 = concatenate([conv1, up9], axis=3)
+    conv9 = Conv2D(64, 3, activation='relu', padding='same')(merge9)
+    conv9 = Conv2D(64, 3, activation='relu', padding='same')(conv9)
+    
+    outputs = Conv2D(1, 1, activation='sigmoid')(conv9)
+    
+    model = Model(inputs=inputs, outputs=outputs)
+    
+    return model
+
+# Dice Coefficient Loss Function 
+def dice_coefficient(y_true, y_pred):
+    smooth = 1e-5
+    intersection = tf.reduce_sum(y_true * y_pred)
+    union = tf.reduce_sum(y_true) + tf.reduce_sum(y_pred)
+    dice = (2.0 * intersection + smooth) / (union + smooth)
+    return 1.0 - dice
+
+
+# Reformat image data structure
+training_scans_reshaped = np.concatenate(training_scans, axis=0)
+training_scans = training_scans_reshaped.reshape((-1, 512, 512, 1))
+train_mask_tibia_labels_reshaped = np.concatenate(train_mask_tibia_labels, axis=0)
+train_mask_tibia_labels = train_mask_tibia_labels_reshaped.reshape((-1, 512, 512, 1))
+
+# Split the data into training and validation sets\
+images_train, images_val, labels_train, labels_val = train_test_split(training_scans, train_mask_tibia_labels, test_size=0.2, random_state=0)
+unseen_scan_model = np.array(training_scans[2][100])
+images_train = images_train.astype('float32') / 255.0
+images_val = images_val.astype('float32') / 255.0
+
+print(images_train.shape)
+print(labels_train.shape)
+print(images_train.dtype)
+print(labels_train.dtype)
+print(images_val.shape)
+print(labels_val.shape)
+print(images_val.dtype)
+print(labels_val.dtype)
+print(unseen_scan_model.shape)
+
+# Expand dimensions for the channel (grayscale) dimension
+# images_train = np.expand_dims(images_train, axis=-1)
+# images_val = np.expand_dims(images_val, axis=-1)
+# labels_train = np.expand_dims(labels_train, axis=-1)
+# labels_val = np.expand_dims(labels_val, axis=-1)
+
+# Create an instance of the U-Net model
+input_shape = (512, 512, 1)  # For grayscale images
+
+# Create an instance of the U-Net model
+model = unet_model(input_shape)
+
+# Compile the model
+# Binary Cross Entropy Loss Function
+model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=['accuracy'])
+
+# Dice Coefficient Loss Function
+# model.compile(optimizer=Adam(), loss=dice_coefficient, metrics=['accuracy'])
+
+# Train the model
+# Hyperparameter tuning -> batch_size
+model.fit(x=images_train, y=labels_train, batch_size=32, epochs=1, validation_data=(images_val, labels_val))
+# Evaluate the model
+loss, accuracy = model.evaluate(x=images_val, y=labels_val)
+
+# Perform inference on new, unseen MRI scans
+predictions = model.predict(unseen_scan_model)
