@@ -76,14 +76,16 @@ def ReadIn_MRIScans_Masks(scans_path):
 
     training_scans = flatten_2d_array(scan_pixel_data)
     training_scans = np.array(training_scans)
-    #TEMP
-    training_scans = training_scans[0:1015]
+ 
 
     # Coordinate Data
     for paitent in folders:
         single_paitent_scans_path =  scans_path + '/{}'.format(paitent)
         for i in range (len(dicom_files)):
             scan_coordinate_data.append(dicom_files[i].ImagePositionPatient)
+
+    #TEMP
+    training_scans = training_scans[0:1015]
     coord_data = pd.DataFrame(scan_coordinate_data, columns=["x", "y", "z"])
     coord_data = coord_data[0:1015]
     # scan_coordinate_data = flatten_2d_array(scan_coordinate_data)
@@ -164,7 +166,7 @@ def preprocessing(scans_path, filename_labels):
     train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
 
     for filename_label in filename_labels:
-        print('\n')
+        # print('\n')
         print(('{}'.format(filename_label)))
 
         training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path)
@@ -196,25 +198,85 @@ def preprocessing(scans_path, filename_labels):
     training_scans = np.array(training_scans)
 
     # Determines image dataset size for UNet model
-    # training_scans_reshape = train_mask_tibia_labels.reshape((1, 10, 512, 512))
-    # train_mask_tibia_labels_reshape = training_scans.reshape((1, 10, 512, 512))
-    training_scans = training_scans[:, :1, :, :]
-    train_mask_tibia_labels = train_mask_tibia_labels[:, :1, :, :]
+    # training_scans_reshaped_array = np.squeeze(training_scans)
+    # training_scans_reshaped_array = np.transpose(training_scans_reshaped_array, (1, 2, 3, 0))
+    # training_scans_input = training_scans_reshaped_array[..., np.newaxis]
+    training_scans_input_converted_array = np.squeeze(training_scans, axis=0)
+    training_scans_input = np.expand_dims(training_scans_input_converted_array, axis=-1)
 
-    # Free up memory occupied by the original arrays
-    # del training_scans
-    # del train_mask_tibia_labels
-    # training_scans = training_scans_reshape
-    # train_mask_tibia_labels = train_mask_tibia_labels_reshape
-    # del training_scans_reshape
-    # del train_mask_tibia_labels_reshape
+    # train_mask_tibia_labels_reshaped_array = np.squeeze(train_mask_tibia_labels)
+    # train_mask_tibia_labels_reshaped_array = np.transpose(train_mask_tibia_labels_reshaped_array, (1, 2, 3, 0))
+    # train_mask_tibia_labels_input = train_mask_tibia_labels_reshaped_array[..., np.newaxis]
+    train_mask_tibia_labels_input_converted_array = np.squeeze(train_mask_tibia_labels, axis=0)
+    train_mask_tibia_labels_input = np.expand_dims(train_mask_tibia_labels_input_converted_array, axis=-1)
+
+    # training_scans = training_scans[:, :4, :, :]
+    # train_mask_tibia_labels = train_mask_tibia_labels[:, :4, :, :]
 
     print('Number of Paitents: ', (training_scans.shape)[0])
-    print('Training Scans Input Shape: ', training_scans.shape)
-    print('Training Masks Input Shape: ', train_mask_tibia_labels.shape)
-    get_ram_usage(training_scans, 'training_scans')
-    get_ram_usage(train_mask_tibia_labels, 'train_mask_tibia_labels')
+    print('Training Scans Input Shape: ', training_scans_input.shape)
+    print('Training Masks Input Shape: ', train_mask_tibia_labels_input.shape)
+    get_ram_usage(training_scans_input, 'training_scans')
+    get_ram_usage(train_mask_tibia_labels_input, 'train_mask_tibia_labels')
+
+    return training_scans_input, train_mask_tibia_labels_input
 
 
-    return training_scans, train_mask_tibia_labels
+# scans_path = 'D:/MRI - Tairawhiti'
+# # filename_labels = ['R_tibia_15A', 'R_tibia_16A', 'R_tibia_4A']
+# filename_labels = ['R_tibia_15A']
+# train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
 
+# for filename_label in filename_labels:
+#     # print('\n')
+#     print(('{}'.format(filename_label)))
+
+#     training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path)
+#     slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data = MappingCoordinateData(filename_label, coord_data)
+#     voxel_grid = VoxelisationMask(filename_label, slice_aoi_range)
+
+#     train_mask_tibia = np.zeros((1015, 512, 512))
+#     train_mask_tibia[(slices_aoi_start):(slices_aoi_end+1)] = voxel_grid
+#     # train_mask_tibia[(slices_aoi_start):(slices_aoi_end)] = voxel_grid
+#     train_mask_tibia_labels.append(train_mask_tibia)
+
+#     training_scans.append(training_scan)
+
+#     start_slices_aoi.append(slices_aoi_start)
+#     end_slices_aoi.append(slices_aoi_end)
+#     slice_aoi_ranges.append(slice_aoi_range)
+
+#     print('\n')
+
+# max_slice_aoi_range = np.max(slice_aoi_ranges)
+# min_start_slice_aoi = np.min(start_slices_aoi)
+# max_end_slice_aoi = np.max(end_slices_aoi)
+
+# for patient in range(len(train_mask_tibia_labels)):
+#     train_mask_tibia_labels[patient] = train_mask_tibia_labels[patient][min_start_slice_aoi:max_end_slice_aoi]
+#     training_scans[patient] = training_scans[patient][min_start_slice_aoi:max_end_slice_aoi]
+
+# train_mask_tibia_labels = np.array(train_mask_tibia_labels)
+# training_scans = np.array(training_scans)
+
+# # Determines image dataset size for UNet model
+# # training_scans_reshaped_array = np.squeeze(training_scans)
+# # training_scans_reshaped_array = np.transpose(training_scans_reshaped_array, (1, 2, 3, 0))
+# # training_scans_input = training_scans_reshaped_array[..., np.newaxis]
+# training_scans_input_converted_array = np.squeeze(training_scans, axis=0)
+# training_scans_input = np.expand_dims(training_scans_input_converted_array, axis=-1)
+
+# # train_mask_tibia_labels_reshaped_array = np.squeeze(train_mask_tibia_labels)
+# # train_mask_tibia_labels_reshaped_array = np.transpose(train_mask_tibia_labels_reshaped_array, (1, 2, 3, 0))
+# # train_mask_tibia_labels_input = train_mask_tibia_labels_reshaped_array[..., np.newaxis]
+# train_mask_tibia_labels_input_converted_array = np.squeeze(train_mask_tibia_labels, axis=0)
+# train_mask_tibia_labels_input = np.expand_dims(train_mask_tibia_labels_input_converted_array, axis=-1)
+
+# # training_scans = training_scans[:, :4, :, :]
+# # train_mask_tibia_labels = train_mask_tibia_labels[:, :4, :, :]
+
+# print('Number of Paitents: ', (training_scans.shape)[0])
+# print('Training Scans Input Shape: ', training_scans_input.shape)
+# print('Training Masks Input Shape: ', train_mask_tibia_labels_input.shape)
+# get_ram_usage(training_scans_input, 'training_scans')
+# get_ram_usage(train_mask_tibia_labels_input, 'train_mask_tibia_labels')
