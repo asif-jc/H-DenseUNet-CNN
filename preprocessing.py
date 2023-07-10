@@ -53,44 +53,36 @@ def get_ram_usage(variable, variable_name):
     size_in_gb = size_in_mb / 1024
     message = "Memory usage of %s: %d %s." % (variable_name, size_in_mb, 'MB')
     print(message)
+#Helper Function
+def convert_4d_to_3d(array_4d, axis):
+    array_3d = np.squeeze(array_4d, axis=axis)
+    return array_3d
 
 
-def ReadIn_MRIScans_Masks(scans_path):
-
-    folders = ListFolders(scans_path)
+def ReadIn_MRIScans_Masks(scans_path, folders):
+    print('Patient Scan Data: ', folders)
     scan_pixel_data = []
     scan_coordinate_data = []
-
     # Pixel Data
-    for paitent in folders:
-        single_scan_pixel_data = []
-        # single_scan_coord_data = []
-        single_paitent_scans_path =  scans_path + '/{}'.format(paitent)
-        dicom_files = read_dicom_files(single_paitent_scans_path)
-        # D:\MRI - Tairawhiti\AutoBind_WaterWATER_450
-        for i in range (len(dicom_files)):
-            single_scan_pixel_data.append(dicom_files[i].pixel_array)
-            # single_scan_coord_data.append(dicom_files[i].ImagePositionPatient)
-        scan_pixel_data.append(single_scan_pixel_data)
-        # scan_coordinate_data.append(single_scan_pixel_data)
+    single_scan_pixel_data = []
+
+    single_paitent_scans_path =  scans_path + '/{}'.format(folders)
+    dicom_files = read_dicom_files(single_paitent_scans_path)
+
+    # D:\MRI - Tairawhiti\AutoBind_WaterWATER_450
+    for i in range (len(dicom_files)):
+        single_scan_pixel_data.append(dicom_files[i].pixel_array)
+    scan_pixel_data.append(single_scan_pixel_data)
 
     training_scans = flatten_2d_array(scan_pixel_data)
     training_scans = np.array(training_scans)
  
-
     # Coordinate Data
-    for paitent in folders:
-        single_paitent_scans_path =  scans_path + '/{}'.format(paitent)
-        for i in range (len(dicom_files)):
-            scan_coordinate_data.append(dicom_files[i].ImagePositionPatient)
+    single_paitent_scans_path =  scans_path + '/{}'.format(folders)
+    for i in range (len(dicom_files)):
+        scan_coordinate_data.append(dicom_files[i].ImagePositionPatient)
 
-    #TEMP
-    training_scans = training_scans[0:1015]
     coord_data = pd.DataFrame(scan_coordinate_data, columns=["x", "y", "z"])
-    coord_data = coord_data[0:1015]
-    # scan_coordinate_data = flatten_2d_array(scan_coordinate_data)
-    # scan_coordinate_data = np.array(scan_coordinate_data)
-
     return training_scans, coord_data
 
 
@@ -106,8 +98,14 @@ def MappingCoordinateData(filename_label, coord_data):
     print('Height of Paitent in mm: ', np.abs(coord_data.iloc[-1][2] - coord_data.iloc[0][2]))
     print('Length of Paitent AOI (tibia) in mm: ', np.abs(vertices.iloc[-1][2] - vertices.iloc[0][2]))
 
-    vertices['z'] = np.round(vertices['z'] * 2) / 2
-    coord_data['z'] = np.round(coord_data['z'] * 2) / 2
+    if True:
+        vertices.to_csv('ExactMaskCoordinateData.csv')
+        coord_data.to_csv('ExactScanCoordinateData.csv')
+        
+    # vertices['z'] = np.round(vertices['z'] * 2) / 2
+    # coord_data['z'] = np.round(coord_data['z'] * 2) / 2
+    vertices['z'] = np.round(vertices['z'] * 10) / 10
+    coord_data['z'] = np.round(coord_data['z'] * 10) / 10
 
     merged_df = pd.merge(coord_data, vertices, on='z')
     condensed_df = merged_df.groupby('z').mean().reset_index()
@@ -124,8 +122,9 @@ def MappingCoordinateData(filename_label, coord_data):
     print('AOI Slice Range: ', slice_aoi_range)
 
     # CSV Format 
-    if False:
+    if True:
         coord_data.to_csv('tibia_mri_coord.csv')
+    # print(coord_data)
 
     return slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data
 
@@ -162,22 +161,26 @@ def VoxelisationMask(filename_label, slice_aoi_range):
 
 
 
-def preprocessing(scans_path, filename_labels):
+def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data):
     train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
+    # folders = ListFolders(scans_path)
+    # folders = ['1_AutoBind_WaterWATER_450_15A', '2_AutoBindWATER_450_16A', '3_AutoBindWATER_650_4A']
+    print('Patient Scan Data Folders Included in Run: ', folders)
 
-    for filename_label in filename_labels:
-        # print('\n')
-        print(('{}'.format(filename_label)))
+    for index, filename_label in enumerate(filename_labels):
+        print('\n')
+        print('Segmentation Mask: ',('{}'.format(filename_label)))
 
-        training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path)
+        training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path, folders[index])
+        raw_data = training_scan
         slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data = MappingCoordinateData(filename_label, coord_data)
         voxel_grid = VoxelisationMask(filename_label, slice_aoi_range)
 
-        train_mask_tibia = np.zeros((1015, 512, 512))
+        train_mask_tibia = np.zeros((total_slices_raw_data, 512, 512))
         train_mask_tibia[(slices_aoi_start):(slices_aoi_end+1)] = voxel_grid
         # train_mask_tibia[(slices_aoi_start):(slices_aoi_end)] = voxel_grid
-        train_mask_tibia_labels.append(train_mask_tibia)
 
+        train_mask_tibia_labels.append(train_mask_tibia)
         training_scans.append(training_scan)
 
         start_slices_aoi.append(slices_aoi_start)
@@ -186,97 +189,43 @@ def preprocessing(scans_path, filename_labels):
 
         print('\n')
 
-    max_slice_aoi_range = np.max(slice_aoi_ranges)
-    min_start_slice_aoi = np.min(start_slices_aoi)
-    max_end_slice_aoi = np.max(end_slices_aoi)
+    # max_slice_aoi_range = np.max(slice_aoi_ranges)
+    # min_start_slice_aoi = np.min(start_slices_aoi)
+    # max_end_slice_aoi = np.max(end_slices_aoi)
 
-    for patient in range(len(train_mask_tibia_labels)):
-        train_mask_tibia_labels[patient] = train_mask_tibia_labels[patient][min_start_slice_aoi:max_end_slice_aoi]
-        training_scans[patient] = training_scans[patient][min_start_slice_aoi:max_end_slice_aoi]
+    # for patient in range(len(train_mask_tibia_labels)):
+    #     train_mask_tibia_labels[patient] = train_mask_tibia_labels[patient][min_start_slice_aoi:max_end_slice_aoi]
+    #     training_scans[patient] = training_scans[patient][min_start_slice_aoi:max_end_slice_aoi]
 
+    # training_scans = convert_4d_to_3d(training_scans, axis = 1)
+    # train_mask_tibia_labels = convert_4d_to_3d(train_mask_tibia_labels, axis = 1)
     train_mask_tibia_labels = np.array(train_mask_tibia_labels)
     training_scans = np.array(training_scans)
 
+
+    # print(training_scans.shape)
+    # print(train_mask_tibia_labels.shape)
     # Determines image dataset size for UNet model
     # training_scans_reshaped_array = np.squeeze(training_scans)
     # training_scans_reshaped_array = np.transpose(training_scans_reshaped_array, (1, 2, 3, 0))
     # training_scans_input = training_scans_reshaped_array[..., np.newaxis]
-    training_scans_input_converted_array = np.squeeze(training_scans, axis=0)
-    training_scans_input = np.expand_dims(training_scans_input_converted_array, axis=-1)
+    # print(training_scans.shape)
+    # training_scans_input_converted_array = np.squeeze(training_scans, axis=0)
+    # training_scans_input = np.expand_dims(training_scans_input_converted_array, axis=-1)
 
+    # print(train_mask_tibia_labels.shape)
     # train_mask_tibia_labels_reshaped_array = np.squeeze(train_mask_tibia_labels)
     # train_mask_tibia_labels_reshaped_array = np.transpose(train_mask_tibia_labels_reshaped_array, (1, 2, 3, 0))
     # train_mask_tibia_labels_input = train_mask_tibia_labels_reshaped_array[..., np.newaxis]
-    train_mask_tibia_labels_input_converted_array = np.squeeze(train_mask_tibia_labels, axis=0)
-    train_mask_tibia_labels_input = np.expand_dims(train_mask_tibia_labels_input_converted_array, axis=-1)
+    # train_mask_tibia_labels_input_converted_array = np.squeeze(train_mask_tibia_labels, axis=0)
+    # train_mask_tibia_labels_input = np.expand_dims(train_mask_tibia_labels_input_converted_array, axis=-1)
+    
 
-    # training_scans = training_scans[:, :4, :, :]
-    # train_mask_tibia_labels = train_mask_tibia_labels[:, :4, :, :]
 
     print('Number of Paitents: ', (training_scans.shape)[0])
-    print('Training Scans Input Shape: ', training_scans_input.shape)
-    print('Training Masks Input Shape: ', train_mask_tibia_labels_input.shape)
-    get_ram_usage(training_scans_input, 'training_scans')
-    get_ram_usage(train_mask_tibia_labels_input, 'train_mask_tibia_labels')
+    print('Training Scans Input Shape: ', training_scans.shape)
+    print('Training Masks Input Shape: ', train_mask_tibia_labels.shape)
+    get_ram_usage(training_scans, 'training_scans')
+    get_ram_usage(train_mask_tibia_labels, 'train_mask_tibia_labels')
 
-    return training_scans_input, train_mask_tibia_labels_input
-
-
-# scans_path = 'D:/MRI - Tairawhiti'
-# # filename_labels = ['R_tibia_15A', 'R_tibia_16A', 'R_tibia_4A']
-# filename_labels = ['R_tibia_15A']
-# train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
-
-# for filename_label in filename_labels:
-#     # print('\n')
-#     print(('{}'.format(filename_label)))
-
-#     training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path)
-#     slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data = MappingCoordinateData(filename_label, coord_data)
-#     voxel_grid = VoxelisationMask(filename_label, slice_aoi_range)
-
-#     train_mask_tibia = np.zeros((1015, 512, 512))
-#     train_mask_tibia[(slices_aoi_start):(slices_aoi_end+1)] = voxel_grid
-#     # train_mask_tibia[(slices_aoi_start):(slices_aoi_end)] = voxel_grid
-#     train_mask_tibia_labels.append(train_mask_tibia)
-
-#     training_scans.append(training_scan)
-
-#     start_slices_aoi.append(slices_aoi_start)
-#     end_slices_aoi.append(slices_aoi_end)
-#     slice_aoi_ranges.append(slice_aoi_range)
-
-#     print('\n')
-
-# max_slice_aoi_range = np.max(slice_aoi_ranges)
-# min_start_slice_aoi = np.min(start_slices_aoi)
-# max_end_slice_aoi = np.max(end_slices_aoi)
-
-# for patient in range(len(train_mask_tibia_labels)):
-#     train_mask_tibia_labels[patient] = train_mask_tibia_labels[patient][min_start_slice_aoi:max_end_slice_aoi]
-#     training_scans[patient] = training_scans[patient][min_start_slice_aoi:max_end_slice_aoi]
-
-# train_mask_tibia_labels = np.array(train_mask_tibia_labels)
-# training_scans = np.array(training_scans)
-
-# # Determines image dataset size for UNet model
-# # training_scans_reshaped_array = np.squeeze(training_scans)
-# # training_scans_reshaped_array = np.transpose(training_scans_reshaped_array, (1, 2, 3, 0))
-# # training_scans_input = training_scans_reshaped_array[..., np.newaxis]
-# training_scans_input_converted_array = np.squeeze(training_scans, axis=0)
-# training_scans_input = np.expand_dims(training_scans_input_converted_array, axis=-1)
-
-# # train_mask_tibia_labels_reshaped_array = np.squeeze(train_mask_tibia_labels)
-# # train_mask_tibia_labels_reshaped_array = np.transpose(train_mask_tibia_labels_reshaped_array, (1, 2, 3, 0))
-# # train_mask_tibia_labels_input = train_mask_tibia_labels_reshaped_array[..., np.newaxis]
-# train_mask_tibia_labels_input_converted_array = np.squeeze(train_mask_tibia_labels, axis=0)
-# train_mask_tibia_labels_input = np.expand_dims(train_mask_tibia_labels_input_converted_array, axis=-1)
-
-# # training_scans = training_scans[:, :4, :, :]
-# # train_mask_tibia_labels = train_mask_tibia_labels[:, :4, :, :]
-
-# print('Number of Paitents: ', (training_scans.shape)[0])
-# print('Training Scans Input Shape: ', training_scans_input.shape)
-# print('Training Masks Input Shape: ', train_mask_tibia_labels_input.shape)
-# get_ram_usage(training_scans_input, 'training_scans')
-# get_ram_usage(train_mask_tibia_labels_input, 'train_mask_tibia_labels')
+    return training_scans, train_mask_tibia_labels, raw_data
