@@ -8,6 +8,7 @@ import trimesh
 from pyntcloud import PyntCloud
 from skimage.transform import resize
 import sys
+import matplotlib.pyplot as plt
 
 # Helper Function
 def flatten_3d_to_2d(array_3d):
@@ -57,19 +58,27 @@ def get_ram_usage(variable, variable_name):
 def convert_4d_to_3d(array_4d, axis):
     array_3d = np.squeeze(array_4d, axis=axis)
     return array_3d
-
+def plot_3d_data(x, y, z):
+    
+    # Plot the 3D scatter plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(x, y, z, c='blue')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    plt.show()
 
 def ReadIn_MRIScans_Masks(scans_path, folders):
     print('Patient Scan Data: ', folders)
     scan_pixel_data = []
     scan_coordinate_data = []
-    # Pixel Data
     single_scan_pixel_data = []
 
     single_paitent_scans_path =  scans_path + '/{}'.format(folders)
     dicom_files = read_dicom_files(single_paitent_scans_path)
 
-    # D:\MRI - Tairawhiti\AutoBind_WaterWATER_450
+    # Extracting pixel data
     for i in range (len(dicom_files)):
         single_scan_pixel_data.append(dicom_files[i].pixel_array)
     scan_pixel_data.append(single_scan_pixel_data)
@@ -95,8 +104,18 @@ def MappingCoordinateData(filename_label, coord_data):
     # Convert the mesh vertices to a DataFrame
     vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
 
+    # Pranav Ordering
+    # coord_data = coord_data.sort_values('z', ascending = False)
+    # coord_data = coord_data.reset_index(drop = True)
+    vertices = vertices.sort_values('z', ascending = False)
+    vertices = vertices.reset_index(drop = True)
+
     print('Height of Paitent in mm: ', np.abs(coord_data.iloc[-1][2] - coord_data.iloc[0][2]))
     print('Length of Paitent AOI (tibia) in mm: ', np.abs(vertices.iloc[-1][2] - vertices.iloc[0][2]))
+    # vertices['z'] = vertices['z'].apply(lambda x: round(x, 1))
+    coord_data['z'] = coord_data['z'].apply(lambda x: round(x, 1))
+
+    plot_3d_data(np.array(vertices['x']), np.array(vertices['y']), np.array(vertices['z']))
 
     if True:
         vertices.to_csv('ExactMaskCoordinateData.csv')
@@ -104,11 +123,16 @@ def MappingCoordinateData(filename_label, coord_data):
         
     # vertices['z'] = np.round(vertices['z'] * 2) / 2
     # coord_data['z'] = np.round(coord_data['z'] * 2) / 2
-    vertices['z'] = np.round(vertices['z'] * 10) / 10
-    coord_data['z'] = np.round(coord_data['z'] * 10) / 10
+    vertices['z'] = np.round(vertices['z'] * 2) / 2
+    # coord_data['z'] = np.round(coord_data['z'] * 10) / 10
+    # vertices['z'] = vertices['z'].apply(lambda x: round(x, 1))
+    # coord_data['z'] = coord_data['z'].apply(lambda x: round(x, 1))
+    if True:
+        vertices.to_csv('RoundedMaskCoordinateData.csv')
 
     merged_df = pd.merge(coord_data, vertices, on='z')
-    condensed_df = merged_df.groupby('z').mean().reset_index()
+    # condensed_df = merged_df.groupby('z').mean().reset_index()
+    condensed_df = merged_df.groupby('z').median().reset_index()
 
     mapping_dict = dict(zip(condensed_df['z'], ['AOI']*len(condensed_df)))
 
@@ -124,6 +148,8 @@ def MappingCoordinateData(filename_label, coord_data):
     # CSV Format 
     if True:
         coord_data.to_csv('tibia_mri_coord.csv')
+        merged_df.to_csv('mergedcoordsystems.csv')
+        condensed_df.to_csv('condensedmergedcoordsystems.csv')
     # print(coord_data)
 
     return slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data
@@ -202,7 +228,7 @@ def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data, D
     train_mask_tibia_labels /= 255.  # scale masks to [0, 1]
     training_scans /= 255.  # scale masks to [0, 1]
 
-    print('Number of Paitents: ', (training_scans.shape)[0])
+    print('Number of Paitents: ', len(filename_labels))
     print('Training Scans Input Shape: ', training_scans.shape)
     print('Training Masks Input Shape: ', train_mask_tibia_labels.shape)
     get_ram_usage(training_scans, 'training_scans')
