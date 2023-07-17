@@ -90,10 +90,14 @@ def ReadIn_MRIScans_Masks(scans_path, folders):
 # Mapping coordinate data from groundtruth mask/label to mri training data
 def MappingCoordinateData(filename_label, coord_data):
     # Load in mesh of label data
-    mesh = trimesh.load_mesh(('C:/Users/GGPC/OneDrive/Desktop/Part 4 Project/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
+    mesh = trimesh.load_mesh(('/Users/pranavrao/Documents/GitHub/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
 
     # Convert the mesh vertices to a DataFrame
     vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
+
+    #reorder
+    coord_data = coord_data.sort_values('z', ascending = False)
+    coord_data = coord_data.reset_index(drop = True)
 
     print('Height of Paitent in mm: ', np.abs(coord_data.iloc[-1][2] - coord_data.iloc[0][2]))
     print('Length of Paitent AOI (tibia) in mm: ', np.abs(vertices.iloc[-1][2] - vertices.iloc[0][2]))
@@ -132,7 +136,7 @@ def MappingCoordinateData(filename_label, coord_data):
 
 def VoxelisationMask(filename_label, slice_aoi_range):
     # Load in mesh of label data
-    mesh = trimesh.load_mesh(('C:/Users/GGPC/OneDrive/Desktop/Part 4 Project/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
+    mesh = trimesh.load_mesh(('/Users/pranavrao/Documents/GitHub/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
 
     # Convert the mesh vertices to a DataFrame
     vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
