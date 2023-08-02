@@ -188,31 +188,23 @@ def VoxelisationMask(filename_label, slice_aoi_range):
 
 
 
-def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data, DataOnlyAOI):
+def preprocessing(scans_path, filename_labels):
     train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
-    print('Patient Scan Data Folders Included in Run: ', folders)
 
-    for index, filename_label in enumerate(filename_labels):
+    for filename_label in filename_labels:
         print('\n')
-        print('Segmentation Mask: ',('{}'.format(filename_label)))
+        print(('{}'.format(filename_label)))
 
-        training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path, folders[index])
+        training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path)
         slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data = MappingCoordinateData(filename_label, coord_data)
         voxel_grid = VoxelisationMask(filename_label, slice_aoi_range)
 
-        if(DataOnlyAOI == True):
-            if (index == 0):
-                train_mask_tibia_labels = voxel_grid
-                training_scans = training_scan[(slices_aoi_start):(slices_aoi_end+1)]
-            else:
-                train_mask_tibia_labels = np.concatenate((train_mask_tibia_labels, voxel_grid), axis=0)
-                training_scans = np.concatenate((training_scans, training_scan[(slices_aoi_start):(slices_aoi_end+1)]), axis=0)
+        train_mask_tibia = np.zeros((1015, 512, 512))
+        train_mask_tibia[(slices_aoi_start):(slices_aoi_end+1)] = voxel_grid
+        # train_mask_tibia[(slices_aoi_start):(slices_aoi_end)] = voxel_grid
+        train_mask_tibia_labels.append(train_mask_tibia)
 
-        if (DataOnlyAOI == False):
-            train_mask_tibia = np.zeros((total_slices_raw_data, 512, 512))
-            train_mask_tibia[(slices_aoi_start):(slices_aoi_end+1)] = voxel_grid
-            train_mask_tibia_labels.append(train_mask_tibia)
-            training_scans.append(training_scan)
+        training_scans.append(training_scan)
 
         start_slices_aoi.append(slices_aoi_start)
         end_slices_aoi.append(slices_aoi_end)
@@ -220,19 +212,36 @@ def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data, D
 
         print('\n')
 
+    max_slice_aoi_range = np.max(slice_aoi_ranges)
+    min_start_slice_aoi = np.min(start_slices_aoi)
+    max_end_slice_aoi = np.max(end_slices_aoi)
+
+    for patient in range(len(train_mask_tibia_labels)):
+        train_mask_tibia_labels[patient] = train_mask_tibia_labels[patient][min_start_slice_aoi:max_end_slice_aoi]
+        training_scans[patient] = training_scans[patient][min_start_slice_aoi:max_end_slice_aoi]
+
     train_mask_tibia_labels = np.array(train_mask_tibia_labels)
     training_scans = np.array(training_scans)
 
-    # Normalization
-    train_mask_tibia_labels = train_mask_tibia_labels.astype('float32')
-    training_scans = training_scans.astype('float32')
-    train_mask_tibia_labels /= 255.  # scale masks to [0, 1]
-    training_scans /= 255.  # scale masks to [0, 1]
+    # Determines image dataset size for UNet model
+    # training_scans_reshape = train_mask_tibia_labels.reshape((1, 10, 512, 512))
+    # train_mask_tibia_labels_reshape = training_scans.reshape((1, 10, 512, 512))
+    training_scans = training_scans[:, :1, :, :]
+    train_mask_tibia_labels = train_mask_tibia_labels[:, :1, :, :]
+
+    # Free up memory occupied by the original arrays
+    # del training_scans
+    # del train_mask_tibia_labels
+    # training_scans = training_scans_reshape
+    # train_mask_tibia_labels = train_mask_tibia_labels_reshape
+    # del training_scans_reshape
+    # del train_mask_tibia_labels_reshape
 
     print('Number of Paitents: ', (training_scans.shape)[0])
     print('Training Scans Input Shape: ', training_scans.shape)
     print('Training Masks Input Shape: ', train_mask_tibia_labels.shape)
     get_ram_usage(training_scans, 'training_scans')
     get_ram_usage(train_mask_tibia_labels, 'train_mask_tibia_labels')
+
 
     return training_scans, train_mask_tibia_labels
