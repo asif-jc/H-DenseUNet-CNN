@@ -59,9 +59,9 @@ def convert_4d_to_3d(array_4d, axis):
     array_3d = np.squeeze(array_4d, axis=axis)
     return array_3d
 def plot_3d_data(x, y, z):
-    
+    # Define the size of the figure (width, height) in inches
+    fig = plt.figure(figsize=(4, 4))
     # Plot the 3D scatter plot
-    fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(x, y, z, c='blue')
     ax.set_xlabel('X')
@@ -74,6 +74,10 @@ def ReadIn_MRIScans_Masks(scans_path, folders):
     scan_pixel_data = []
     scan_coordinate_data = []
     single_scan_pixel_data = []
+    scan_coordinate_data = []
+    scan_orientation_data = []
+    scan_pixelspacing_data = []
+
 
     single_paitent_scans_path =  scans_path + '/{}'.format(folders)
     dicom_files = read_dicom_files(single_paitent_scans_path)
@@ -90,9 +94,11 @@ def ReadIn_MRIScans_Masks(scans_path, folders):
     single_paitent_scans_path =  scans_path + '/{}'.format(folders)
     for i in range (len(dicom_files)):
         scan_coordinate_data.append(dicom_files[i].ImagePositionPatient)
-
+        scan_orientation_data.append(dicom_files[i].ImageOrientationPatient)
+        scan_pixelspacing_data.append(dicom_files[i].PixelSpacing)
+        
     coord_data = pd.DataFrame(scan_coordinate_data, columns=["x", "y", "z"])
-    return training_scans, coord_data
+    return training_scans, coord_data, scan_pixelspacing_data
 
 
 
@@ -160,11 +166,13 @@ def VoxelisationMask(filename_label, slice_aoi_range):
     # Load in mesh of label data
     mesh = trimesh.load_mesh(('C:/Users/GGPC/OneDrive/Desktop/Part 4 Project/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
 
-    # Convert the mesh vertices to a DataFrame
+    # # Convert the mesh vertices to a DataFrame
+    # vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
+    # # Convert the mesh to a PyntCloud object
+    # cloud = PyntCloud(vertices)
     vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
-
-    # Convert the mesh to a PyntCloud object
-    cloud = PyntCloud(vertices)
+    faces = pd.DataFrame(mesh.faces, columns=['v1', 'v2', 'v3'])
+    cloud = PyntCloud(points=vertices, mesh=faces)
 
     # Set the desired resolution
     desired_resolution = [slice_aoi_range, 512, 512]
@@ -187,6 +195,23 @@ def VoxelisationMask(filename_label, slice_aoi_range):
 
 
 
+def align_3d_model_with_dicom(bone_model, dicom_metadata):
+    # Get DICOM image position and orientation
+    image_position = np.array(dicom_metadata.ImagePositionPatient)
+    image_orientation = np.array(dicom_metadata.ImageOrientationPatient).reshape(2, 3)
+
+    # Calculate translation and rotation matrix
+    translation = image_position - bone_model.centroid
+    rotation_matrix = np.linalg.solve(image_orientation, bone_model.principal_inertia_vectors.T)
+
+    # Transform the bone model
+    bone_model.apply_translation(translation)
+    bone_model.apply_transform(rotation_matrix)
+
+    return bone_model
+
+
+
 def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data, DataOnlyAOI):
     train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
     print('Patient Scan Data Folders Included in Run: ', folders)
@@ -195,7 +220,7 @@ def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data, D
         print('\n')
         print('Segmentation Mask: ',('{}'.format(filename_label)))
 
-        training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path, folders[index])
+        training_scan, coord_data, scan_pixelspacing_data = ReadIn_MRIScans_Masks(scans_path, folders[index])
         slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data = MappingCoordinateData(filename_label, coord_data)
         voxel_grid = VoxelisationMask(filename_label, slice_aoi_range)
 
