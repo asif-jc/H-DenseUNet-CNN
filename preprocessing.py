@@ -5,9 +5,11 @@ import pydicom
 import SimpleITK as sitk
 import pandas as pd
 import trimesh
+import tensorflow as tf
 from pyntcloud import PyntCloud
 from skimage.transform import resize
 import sys
+import pathlib
 
 # Helper Function
 def flatten_3d_to_2d(array_3d):
@@ -84,6 +86,27 @@ def ReadIn_MRIScans_Masks(scans_path, folders):
 
     coord_data = pd.DataFrame(scan_coordinate_data, columns=["x", "y", "z"])
     return training_scans, coord_data
+
+def process_real_masks():
+
+
+    mask_bytes = tf.io.read_image(('/Users/pranavrao/Documents/GitHub/Part4Project/SegmentationMasks/4_R_tibia_5A.ply'))
+    mask_image = tf.io.image.decode_dicom_image(mask_bytes,
+                                               on_error='lossy',
+                                               dtype=tf.uint8)
+
+    # need to squeeze, because dicom are supposed to be 3D
+    # but in this dataset, each dicom image is just one slice 
+    # (1, W, H, 1) -> (W, H, 1)
+
+    mask_image = tf.squeeze(mask_image, axis=0)
+    mask_image = tf.image.convert_image_dtype(mask_image, tf.float32)
+
+    return mask_image
+
+
+    
+
 
 
 
