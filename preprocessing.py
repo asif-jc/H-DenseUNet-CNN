@@ -37,7 +37,9 @@ def ListFolders(directory):
 # Helper Function
 def read_dicom_files(directory):
     dicom_files = []
-    for filename in os.listdir(directory):
+    files = os.listdir(directory)
+    sorted_files = sorted(files)
+    for filename in sorted_files:
         filepath = os.path.join(directory, filename)
         if os.path.isfile(filepath) and filename.endswith('.dcm'):
             try:
@@ -111,8 +113,8 @@ def MappingCoordinateData(filename_label, coord_data):
     vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
 
     # Pranav Ordering
-    # coord_data = coord_data.sort_values('z', ascending = False)
-    # coord_data = coord_data.reset_index(drop = True)
+    coord_data = coord_data.sort_values('z', ascending = False)
+    coord_data = coord_data.reset_index(drop = True)
     vertices = vertices.sort_values('z', ascending = False)
     vertices = vertices.reset_index(drop = True)
 
