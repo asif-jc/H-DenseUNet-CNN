@@ -252,8 +252,9 @@ def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data, D
     # Normalization
     train_mask_tibia_labels = train_mask_tibia_labels.astype('float32')
     training_scans = training_scans.astype('float32')
-    train_mask_tibia_labels /= 255.  # scale masks to [0, 1]
     training_scans /= 255.  # scale masks to [0, 1]
+    train_mask_tibia_labels = np.where(train_mask_tibia_labels != 0, 1, 0)
+    print("Masks Binarised")
 
     print('Number of Paitents: ', len(filename_labels))
     print('Training Scans Input Shape: ', training_scans.shape)
