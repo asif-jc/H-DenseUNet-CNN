@@ -8,6 +8,7 @@ import trimesh
 from pyntcloud import PyntCloud
 from skimage.transform import resize
 import sys
+import matplotlib.pyplot as plt
 
 # Helper Function
 def flatten_3d_to_2d(array_3d):
@@ -36,7 +37,9 @@ def ListFolders(directory):
 # Helper Function
 def read_dicom_files(directory):
     dicom_files = []
-    for filename in os.listdir(directory):
+    files = os.listdir(directory)
+    sorted_files = sorted(files)
+    for filename in sorted_files:
         filepath = os.path.join(directory, filename)
         if os.path.isfile(filepath) and filename.endswith('.dcm'):
             try:
@@ -53,62 +56,90 @@ def get_ram_usage(variable, variable_name):
     size_in_gb = size_in_mb / 1024
     message = "Memory usage of %s: %d %s." % (variable_name, size_in_mb, 'MB')
     print(message)
+#Helper Function
+def convert_4d_to_3d(array_4d, axis):
+    array_3d = np.squeeze(array_4d, axis=axis)
+    return array_3d
+def plot_3d_data(x, y, z):
+    # Define the size of the figure (width, height) in inches
+    fig = plt.figure(figsize=(4, 4))
+    # Plot the 3D scatter plot
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(x, y, z, c='blue')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    plt.show()
 
-
-def ReadIn_MRIScans_Masks(scans_path):
-
-    folders = ListFolders(scans_path)
+def ReadIn_MRIScans_Masks(scans_path, folders):
+    print('Patient Scan Data: ', folders)
     scan_pixel_data = []
     scan_coordinate_data = []
+    single_scan_pixel_data = []
+    scan_coordinate_data = []
+    scan_orientation_data = []
+    scan_pixelspacing_data = []
 
-    # Pixel Data
-    for paitent in folders:
-        single_scan_pixel_data = []
-        # single_scan_coord_data = []
-        single_paitent_scans_path =  scans_path + '/{}'.format(paitent)
-        dicom_files = read_dicom_files(single_paitent_scans_path)
-        # D:\MRI - Tairawhiti\AutoBind_WaterWATER_450
-        for i in range (len(dicom_files)):
-            single_scan_pixel_data.append(dicom_files[i].pixel_array)
-            # single_scan_coord_data.append(dicom_files[i].ImagePositionPatient)
-        scan_pixel_data.append(single_scan_pixel_data)
-        # scan_coordinate_data.append(single_scan_pixel_data)
+
+    single_paitent_scans_path =  scans_path + '/{}'.format(folders)
+    dicom_files = read_dicom_files(single_paitent_scans_path)
+    # Extracting pixel data
+    for i in range (len(dicom_files)):
+        single_scan_pixel_data.append(dicom_files[i].pixel_array)
+    scan_pixel_data.append(single_scan_pixel_data)
 
     training_scans = flatten_2d_array(scan_pixel_data)
     training_scans = np.array(training_scans)
-    #TEMP
-    training_scans = training_scans[0:1015]
-
+ 
     # Coordinate Data
-    for paitent in folders:
-        single_paitent_scans_path =  scans_path + '/{}'.format(paitent)
-        for i in range (len(dicom_files)):
-            scan_coordinate_data.append(dicom_files[i].ImagePositionPatient)
+    single_paitent_scans_path =  scans_path + '/{}'.format(folders)
+    for i in range (len(dicom_files)):
+        scan_coordinate_data.append(dicom_files[i].ImagePositionPatient)
+        scan_orientation_data.append(dicom_files[i].ImageOrientationPatient)
+        scan_pixelspacing_data.append(dicom_files[i].PixelSpacing)
+        
     coord_data = pd.DataFrame(scan_coordinate_data, columns=["x", "y", "z"])
-    coord_data = coord_data[0:1015]
-    # scan_coordinate_data = flatten_2d_array(scan_coordinate_data)
-    # scan_coordinate_data = np.array(scan_coordinate_data)
-
-    return training_scans, coord_data
+    return training_scans, coord_data, scan_pixelspacing_data
 
 
 
 # Mapping coordinate data from groundtruth mask/label to mri training data
 def MappingCoordinateData(filename_label, coord_data):
     # Load in mesh of label data
-    mesh = trimesh.load_mesh(('C:/Users/GGPC/OneDrive/Desktop/Part 4 Project/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
+    mesh = trimesh.load_mesh(('/Users/pranavrao/Documents/GitHub/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
 
     # Convert the mesh vertices to a DataFrame
     vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
 
+    # Pranav Ordering
+    coord_data = coord_data.sort_values('z', ascending = False)
+    coord_data = coord_data.reset_index(drop = True)
+    vertices = vertices.sort_values('z', ascending = False)
+    vertices = vertices.reset_index(drop = True)
+
     print('Height of Paitent in mm: ', np.abs(coord_data.iloc[-1][2] - coord_data.iloc[0][2]))
     print('Length of Paitent AOI (tibia) in mm: ', np.abs(vertices.iloc[-1][2] - vertices.iloc[0][2]))
+    # vertices['z'] = vertices['z'].apply(lambda x: round(x, 1))
+    coord_data['z'] = coord_data['z'].apply(lambda x: round(x, 1))
 
+    plot_3d_data(np.array(vertices['x']), np.array(vertices['y']), np.array(vertices['z']))
+
+    if True:
+        vertices.to_csv('ExactMaskCoordinateData.csv')
+        coord_data.to_csv('ExactScanCoordinateData.csv')
+        
+    # vertices['z'] = np.round(vertices['z'] * 2) / 2
+    # coord_data['z'] = np.round(coord_data['z'] * 2) / 2
     vertices['z'] = np.round(vertices['z'] * 2) / 2
-    coord_data['z'] = np.round(coord_data['z'] * 2) / 2
+    # coord_data['z'] = np.round(coord_data['z'] * 10) / 10
+    # vertices['z'] = vertices['z'].apply(lambda x: round(x, 1))
+    # coord_data['z'] = coord_data['z'].apply(lambda x: round(x, 1))
+    if True:
+        vertices.to_csv('RoundedMaskCoordinateData.csv')
 
     merged_df = pd.merge(coord_data, vertices, on='z')
-    condensed_df = merged_df.groupby('z').mean().reset_index()
+    # condensed_df = merged_df.groupby('z').mean().reset_index()
+    condensed_df = merged_df.groupby('z').median().reset_index()
 
     mapping_dict = dict(zip(condensed_df['z'], ['AOI']*len(condensed_df)))
 
@@ -122,8 +153,11 @@ def MappingCoordinateData(filename_label, coord_data):
     print('AOI Slice Range: ', slice_aoi_range)
 
     # CSV Format 
-    if False:
+    if True:
         coord_data.to_csv('tibia_mri_coord.csv')
+        merged_df.to_csv('mergedcoordsystems.csv')
+        condensed_df.to_csv('condensedmergedcoordsystems.csv')
+    # print(coord_data)
 
     return slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data
 
@@ -131,13 +165,15 @@ def MappingCoordinateData(filename_label, coord_data):
 
 def VoxelisationMask(filename_label, slice_aoi_range):
     # Load in mesh of label data
-    mesh = trimesh.load_mesh(('C:/Users/GGPC/OneDrive/Desktop/Part 4 Project/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
+    mesh = trimesh.load_mesh(('/Users/pranavrao/Documents/GitHub/Part4Project/SegmentationMasks/{}.ply').format(filename_label))
 
-    # Convert the mesh vertices to a DataFrame
+    # # Convert the mesh vertices to a DataFrame
+    # vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
+    # # Convert the mesh to a PyntCloud object
+    # cloud = PyntCloud(vertices)
     vertices = pd.DataFrame(mesh.vertices, columns=["x", "y", "z"])
-
-    # Convert the mesh to a PyntCloud object
-    cloud = PyntCloud(vertices)
+    faces = pd.DataFrame(mesh.faces, columns=['v1', 'v2', 'v3'])
+    cloud = PyntCloud(points=vertices, mesh=faces)
 
     # Set the desired resolution
     desired_resolution = [slice_aoi_range, 512, 512]
@@ -160,23 +196,48 @@ def VoxelisationMask(filename_label, slice_aoi_range):
 
 
 
-def preprocessing(scans_path, filename_labels):
+def align_3d_model_with_dicom(bone_model, dicom_metadata):
+    # Get DICOM image position and orientation
+    image_position = np.array(dicom_metadata.ImagePositionPatient)
+    image_orientation = np.array(dicom_metadata.ImageOrientationPatient).reshape(2, 3)
+
+    # Calculate translation and rotation matrix
+    translation = image_position - bone_model.centroid
+    rotation_matrix = np.linalg.solve(image_orientation, bone_model.principal_inertia_vectors.T)
+
+    # Transform the bone model
+    bone_model.apply_translation(translation)
+    bone_model.apply_transform(rotation_matrix)
+
+    return bone_model
+
+
+
+def preprocessing(scans_path, filename_labels, folders, total_slices_raw_data, DataOnlyAOI):
     train_mask_tibia_labels, training_scans, start_slices_aoi, end_slices_aoi, slice_aoi_ranges  = [], [], [], [], []
+    print('Patient Scan Data Folders Included in Run: ', folders)
 
-    for filename_label in filename_labels:
+    for index, filename_label in enumerate(filename_labels):
         print('\n')
-        print(('{}'.format(filename_label)))
+        print('Segmentation Mask: ',('{}'.format(filename_label)))
 
-        training_scan, coord_data = ReadIn_MRIScans_Masks(scans_path)
+        training_scan, coord_data, scan_pixelspacing_data = ReadIn_MRIScans_Masks(scans_path, folders[index])
         slices_aoi_start, slices_aoi_end, slice_aoi_range, coord_data = MappingCoordinateData(filename_label, coord_data)
         voxel_grid = VoxelisationMask(filename_label, slice_aoi_range)
 
-        train_mask_tibia = np.zeros((1015, 512, 512))
-        train_mask_tibia[(slices_aoi_start):(slices_aoi_end+1)] = voxel_grid
-        # train_mask_tibia[(slices_aoi_start):(slices_aoi_end)] = voxel_grid
-        train_mask_tibia_labels.append(train_mask_tibia)
+        if(DataOnlyAOI == True):
+            if (index == 0):
+                train_mask_tibia_labels = voxel_grid
+                training_scans = training_scan[(slices_aoi_start):(slices_aoi_end+1)]
+            else:
+                train_mask_tibia_labels = np.concatenate((train_mask_tibia_labels, voxel_grid), axis=0)
+                training_scans = np.concatenate((training_scans, training_scan[(slices_aoi_start):(slices_aoi_end+1)]), axis=0)
 
-        training_scans.append(training_scan)
+        if (DataOnlyAOI == False):
+            train_mask_tibia = np.zeros((total_slices_raw_data, 512, 512))
+            train_mask_tibia[(slices_aoi_start):(slices_aoi_end+1)] = voxel_grid
+            train_mask_tibia_labels.append(train_mask_tibia)
+            training_scans.append(training_scan)
 
         start_slices_aoi.append(slices_aoi_start)
         end_slices_aoi.append(slices_aoi_end)
@@ -184,37 +245,20 @@ def preprocessing(scans_path, filename_labels):
 
         print('\n')
 
-    max_slice_aoi_range = np.max(slice_aoi_ranges)
-    min_start_slice_aoi = np.min(start_slices_aoi)
-    max_end_slice_aoi = np.max(end_slices_aoi)
-
-    for patient in range(len(train_mask_tibia_labels)):
-        train_mask_tibia_labels[patient] = train_mask_tibia_labels[patient][min_start_slice_aoi:max_end_slice_aoi]
-        training_scans[patient] = training_scans[patient][min_start_slice_aoi:max_end_slice_aoi]
-
     train_mask_tibia_labels = np.array(train_mask_tibia_labels)
     training_scans = np.array(training_scans)
 
-    # Determines image dataset size for UNet model
-    # training_scans_reshape = train_mask_tibia_labels.reshape((1, 10, 512, 512))
-    # train_mask_tibia_labels_reshape = training_scans.reshape((1, 10, 512, 512))
-    training_scans = training_scans[:, :1, :, :]
-    train_mask_tibia_labels = train_mask_tibia_labels[:, :1, :, :]
+    # Normalization
+    train_mask_tibia_labels = train_mask_tibia_labels.astype('float32')
+    training_scans = training_scans.astype('float32')
+    training_scans /= 255.  # scale masks to [0, 1]
+    train_mask_tibia_labels = np.where(train_mask_tibia_labels != 0, 1, 0)
+    print("Masks Binarised")
 
-    # Free up memory occupied by the original arrays
-    # del training_scans
-    # del train_mask_tibia_labels
-    # training_scans = training_scans_reshape
-    # train_mask_tibia_labels = train_mask_tibia_labels_reshape
-    # del training_scans_reshape
-    # del train_mask_tibia_labels_reshape
-
-    print('Number of Paitents: ', (training_scans.shape)[0])
+    print('Number of Paitents: ', len(filename_labels))
     print('Training Scans Input Shape: ', training_scans.shape)
     print('Training Masks Input Shape: ', train_mask_tibia_labels.shape)
     get_ram_usage(training_scans, 'training_scans')
     get_ram_usage(train_mask_tibia_labels, 'train_mask_tibia_labels')
 
-
     return training_scans, train_mask_tibia_labels
-
