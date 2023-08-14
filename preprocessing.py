@@ -83,7 +83,6 @@ def ReadIn_MRIScans_Masks(scans_path, folders):
 
     single_paitent_scans_path =  scans_path + '/{}'.format(folders)
     dicom_files = read_dicom_files(single_paitent_scans_path)
-
     # Extracting pixel data
     for i in range (len(dicom_files)):
         single_scan_pixel_data.append(dicom_files[i].pixel_array)
